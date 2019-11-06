@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+
+<launch>
+    <node pkg="depthimage_to_laserscan" type="depthimage_to_laserscan" name="depthimage_to_laserscan" output="screen">
+
+        <remap from="image"             to="$(arg camera)/stereo_recon/depth/image"/>
+        <remap from="camera_info"       to="$(arg camera)/stereo_recon/depth/camera_info"/>
+
+        <param name="scan_height"       value="5"/>
+        <param name="range_max"         value="20" />
+        <param name="output_frame_id"   value="$(arg camera)_laser_scan_frame"/>
+
+    </node>
+
+    <node pkg="tf" type="static_transform_publisher" name="depth_to_laserscan"
+          args="0 0 0 0 0 0 $(arg camera)_depth_frame $(arg camera)_laser_scan_frame 100" />
+</launch>

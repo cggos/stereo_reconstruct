@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+
+<launch>
+    <arg name="camera"    default="stereo"/>
+    <arg name="rviz"      default="false"/>
+    <arg name="mm"        default="false"/>
+    <arg name="colormap"  default="false"/>
+    <arg name="left"      default="left" />
+    <arg name="right"     default="right"/>
+    <arg name="scan"      default="false"/>
+
+    <node pkg="nodelet" type="nodelet" name="nodelet_manager_stereo_recon"  args="manager" output="screen"/>
+
+    <node pkg="nodelet" type="nodelet" name="stereo_reconstruct_pointcloud"
+          args="load stereo_reconstruct/pointcloud nodelet_manager_stereo_recon" respawn="false" output="screen">
+
+        <remap from="left/image"        to="$(arg camera)/$(arg left)/image_rect"/>
+        <remap from="left/camera_info"  to="$(arg camera)/$(arg left)/camera_info"/>
+        <remap from="right/image"       to="$(arg camera)/$(arg right)/image_rect"/>
+        <remap from="right/camera_info" to="$(arg camera)/$(arg right)/camera_info"/>
+
+        <remap from="cloud"             to="$(arg camera)/stereo_recon/cloud" />
+        <remap from="depth"             to="$(arg camera)/stereo_recon/depth/image" />
+
+        <param name="frame_id_depth"    value="$(arg camera)_depth_optical_frame"/>
+        <param name="frame_id_cloud"    value="$(arg camera)_cloud_optical_frame"/>
+
+        <param name="is_mm"             type="bool"   value="$(arg mm)"/>
+        <param name="is_use_colormap"   type="bool"   value="$(arg colormap)"/>
+    </node>
+
+    <group if="$(arg rviz)">
+        <arg name="rviz_cfg" default="$(find stereo_reconstruct)/launch/config/stereo_reconstruct.rviz" />
+        <node pkg="rviz" type="rviz" name="rviz" args="-d $(arg rviz_cfg)"/>
+    </group>
+
+    <include file="$(find stereo_reconstruct)/launch/stereo_reconstruct_tf.launch">
+        <arg name="camera" value="$(arg camera)"/>
+    </include>
+
+    <group if="$(arg scan)">
+        <include file="$(find stereo_reconstruct)/launch/depth_to_laserscan.launch"></include>
+    </group>
+</launch>
