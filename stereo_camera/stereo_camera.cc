@@ -18,34 +18,75 @@ namespace cg {
         }
 
         cv::Mat mat_d_bm;
+        int method = 1;
+        switch (method) {
+        case 0:
         {
-            int blockSize_ = 15;  //15
-            int minDisparity_ = 0;   //0
-            int numDisparities_ = 64;  //64
-            int preFilterSize_ = 9;   //9
-            int preFilterCap_ = 31;  //31
-            int uniquenessRatio_ = 15;  //15
-            int textureThreshold_ = 10;  //10
-            int speckleWindowSize_ = 100; //100
-            int speckleRange_ = 4;   //4
+          int blockSize_ = 15;  //15
+          int minDisparity_ = 0;   //0
+          int numDisparities_ = 64;  //64
+          int preFilterSize_ = 9;   //9
+          int preFilterCap_ = 31;  //31
+          int uniquenessRatio_ = 15;  //15
+          int textureThreshold_ = 10;  //10
+          int speckleWindowSize_ = 100; //100
+          int speckleRange_ = 4;   //4
 
-            cv::Ptr<cv::StereoBM> stereo = cv::StereoBM::create();
-            stereo->setBlockSize(blockSize_);
-            stereo->setMinDisparity(minDisparity_);
-            stereo->setNumDisparities(numDisparities_);
-            stereo->setPreFilterSize(preFilterSize_);
-            stereo->setPreFilterCap(preFilterCap_);
-            stereo->setUniquenessRatio(uniquenessRatio_);
-            stereo->setTextureThreshold(textureThreshold_);
-            stereo->setSpeckleWindowSize(speckleWindowSize_);
-            stereo->setSpeckleRange(speckleRange_);
-            stereo->compute(mat_l, mat_r, mat_d_bm);
+          cv::Ptr<cv::StereoBM> stereo = cv::StereoBM::create();
+          stereo->setBlockSize(blockSize_);
+          stereo->setMinDisparity(minDisparity_);
+          stereo->setNumDisparities(numDisparities_);
+          stereo->setPreFilterSize(preFilterSize_);
+          stereo->setPreFilterCap(preFilterCap_);
+          stereo->setUniquenessRatio(uniquenessRatio_);
+          stereo->setTextureThreshold(textureThreshold_);
+          stereo->setSpeckleWindowSize(speckleWindowSize_);
+          stereo->setSpeckleRange(speckleRange_);
+          stereo->compute(mat_l, mat_r, mat_d_bm);
+
+          // stereoBM:
+          // When disptype == CV_16S, the map is a 16-bit signed single-channel image,
+          // containing disparity values scaled by 16
+          mat_d_bm.convertTo(mat_disp, CV_32FC1, 1 / 16.f);
         }
+          break;
+        case 1:
+        {
+          enum { STEREO_BM = 0, STEREO_SGBM = 1, STEREO_HH = 2, STEREO_VAR = 3, STEREO_3WAY = 4 };
 
-        // stereoBM:
-        // When disptype == CV_16S, the map is a 16-bit signed single-channel image,
-        // containing disparity values scaled by 16
-        mat_d_bm.convertTo(mat_disp, CV_32FC1, 1 / 16.f);
+          cv::Size img_size = mat_l.size();
+          int cn = mat_l.channels();
+
+          int numberOfDisparities = ((img_size.width / 8) + 15) & -16;
+          int SADWindowSize = 9;
+          int sgbmWinSize = SADWindowSize > 0 ? SADWindowSize : 3;
+
+          cv::Ptr<cv::StereoSGBM> sgbm = cv::StereoSGBM::create(0, 16, 3);
+          sgbm->setPreFilterCap(63);
+          sgbm->setBlockSize(sgbmWinSize);
+          sgbm->setP1(8  * cn * sgbmWinSize*sgbmWinSize);
+          sgbm->setP2(32 * cn * sgbmWinSize*sgbmWinSize);
+          sgbm->setMinDisparity(0);
+          sgbm->setNumDisparities(numberOfDisparities);
+          sgbm->setUniquenessRatio(10);
+          sgbm->setSpeckleWindowSize(100);
+          sgbm->setSpeckleRange(32);
+          sgbm->setDisp12MaxDiff(1);
+
+          int alg = STEREO_SGBM;
+          if (alg == STEREO_HH)
+            sgbm->setMode(cv::StereoSGBM::MODE_HH);
+          else if (alg == STEREO_SGBM)
+            sgbm->setMode(cv::StereoSGBM::MODE_SGBM);
+          else if (alg == STEREO_3WAY)
+            sgbm->setMode(cv::StereoSGBM::MODE_SGBM_3WAY);
+
+          sgbm->compute(mat_l, mat_r, mat_d_bm);
+
+          mat_d_bm.convertTo(mat_disp, CV_32FC1, 1 / 16.f);
+        }
+          break;
+        }
     }
 
     void StereoCamera::disparity_to_depth_map(const cv::Mat &mat_disp, cv::Mat &mat_depth) {
