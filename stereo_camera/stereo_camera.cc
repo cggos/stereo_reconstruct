@@ -18,7 +18,7 @@ namespace cg {
         }
 
         cv::Mat mat_d_bm;
-        int method = 1;
+        int method = 0;
         switch (method) {
         case 0:
         {
@@ -81,7 +81,7 @@ namespace cg {
           else if (alg == STEREO_3WAY)
             sgbm->setMode(cv::StereoSGBM::MODE_SGBM_3WAY);
 
-          sgbm->compute(mat_l, mat_r, mat_d_bm);
+          sgbm->compute(mat_l, mat_r, mat_d_bm);          
 
           mat_d_bm.convertTo(mat_disp, CV_32FC1, 1 / 16.f);
         }
@@ -221,7 +221,7 @@ namespace cg {
 
         cv::Mat mat_scaled;
         if (min != max)
-            mat_in.convertTo(mat_scaled, CV_8UC1, 255.0 / (max - min), -255.0 * min / (max - min));
+            mat_in.convertTo(mat_scaled, CV_8UC1, 255.0 / (max - min), 0); // -255.0 * min / (max - min)
 
         cv::applyColorMap(mat_scaled, color_map, int(colortype));
     }
