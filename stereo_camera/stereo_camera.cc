@@ -197,24 +197,6 @@ namespace cg {
         }
     }
 
-    void StereoCamera::generate_pointcloud(
-            const cv::Mat &mat_l, const cv::Mat &mat_disp,
-            std::vector<Eigen::Vector4d, Eigen::aligned_allocator<Eigen::Vector4d>> pointcloud) {
-
-        double fx = 718.856, fy = 718.856, cx = 607.1928, cy = 185.2157;
-        double d = 0.573;
-
-        for (int v = 0; v < mat_l.rows; v++) {
-            for (int u = 0; u < mat_l.cols; u++) {
-                Eigen::Vector4d point(0, 0, 0, mat_l.at<uchar>(v, u) / 255.0);
-                point[2] = fx * d / mat_disp.at<uchar>(v, u);
-                point[0] = (u - cx) / fx * point[2];
-                point[1] = (v - cy) / fy * point[2];
-                pointcloud.push_back(point);
-            }
-        }
-    }
-
     void StereoCamera::get_colormap_ocv(const cv::Mat &mat_in, cv::Mat &color_map, cv::ColormapTypes colortype) {
         double min, max;
         cv::minMaxLoc(mat_in, &min, &max);

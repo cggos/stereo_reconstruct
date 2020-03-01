@@ -28,9 +28,6 @@ namespace cg {
         void depth_to_pointcloud(const cv::Mat &mat_depth, const cv::Mat &mat_left,
                 pcl::PointCloud<pcl::PointXYZRGB> &point_cloud);
 
-        void generate_pointcloud(const cv::Mat &mat_l, const cv::Mat &mat_disp,
-                                 std::vector<Eigen::Vector4d, Eigen::aligned_allocator<Eigen::Vector4d>> pointcloud);
-
         /// pseudocolor / false color a grayscale image using OpenCV’s predefined colormaps
         static void get_colormap_ocv(const cv::Mat &mat_in, cv::Mat &color_map,
                                      cv::ColormapTypes colortype=cv::COLORMAP_JET);
