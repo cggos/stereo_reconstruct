@@ -18,7 +18,7 @@ namespace cg {
         }
 
         cv::Mat mat_d_bm;
-        int method = 0;
+        int method = 1;
         switch (method) {
         case 0:
         {
@@ -146,10 +146,10 @@ namespace cg {
 
     void StereoCamera::depth_to_pointcloud(
             const cv::Mat &mat_depth, const cv::Mat &mat_left,
-            pcl::PointCloud<pcl::PointXYZRGB> &point_cloud) {
+            pcl::PointCloud<pcl::PointXYZRGB> &point_cloud, float max_depth) {
 
         point_cloud.height = (uint32_t) mat_depth.rows;
-        point_cloud.width = (uint32_t) mat_depth.cols;
+        point_cloud.width  = (uint32_t) mat_depth.cols;
         point_cloud.is_dense = false;
         point_cloud.resize(point_cloud.height * point_cloud.width);
 
@@ -179,15 +179,15 @@ namespace cg {
                 switch (mat_depth.type()) {
                     case CV_16UC1: // unit is mm
                         depth = float(mat_depth.at<unsigned short>(h, w));
-                        depth *= 0.001f;
+                        depth *= 0.001f; // convert to meter for pointcloud
                         break;
                     case CV_32FC1: // unit is meter
                         depth = mat_depth.at<float>(h, w);
                         break;
                 }
 
-                double W = depth / camera_model_.left.fx;
-                if (std::isfinite(depth) && depth >= 0) {
+                if (std::isfinite(depth) && depth >= 0 && depth < max_depth) {
+                    double W = depth / camera_model_.left.fx;
                     pt.x = float((cv::Point2f(w, h).x - camera_model_.left.cx) * W);
                     pt.y = float((cv::Point2f(w, h).y - camera_model_.left.cy) * W);
                     pt.z = depth;

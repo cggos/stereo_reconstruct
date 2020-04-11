@@ -10,6 +10,9 @@
 
 #include "camera.h"
 
+typedef pcl::PointXYZRGB PointTYPE;
+typedef pcl::PointCloud<pcl::PointXYZRGB> PointCloudTYPE;
+
 namespace cg {
 
     class StereoCamera {
@@ -26,7 +29,7 @@ namespace cg {
         void disparity_to_depth_map(const cv::Mat &mat_disp, cv::Mat &mat_depth);
 
         void depth_to_pointcloud(const cv::Mat &mat_depth, const cv::Mat &mat_left,
-                pcl::PointCloud<pcl::PointXYZRGB> &point_cloud);
+                PointCloudTYPE &point_cloud, float max_depth=5.f);
 
         /// pseudocolor / false color a grayscale image using OpenCV’s predefined colormaps
         static void get_colormap_ocv(const cv::Mat &mat_in, cv::Mat &color_map,

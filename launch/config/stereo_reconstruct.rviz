@@ -34,7 +34,7 @@ Visualization Manager:
       Cell Size: 1
       Class: rviz/Grid
       Color: 160; 160; 164
-      Enabled: true
+      Enabled: false
       Line Style:
         Line Width: 0.0299999993
         Value: Lines
@@ -47,7 +47,7 @@ Visualization Manager:
       Plane: XY
       Plane Cell Count: 10
       Reference Frame: map
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -73,7 +73,7 @@ Visualization Manager:
       Size (Pixels): 2
       Size (m): 0.00999999978
       Style: Points
-      Topic: /mynteye/stereo_recon/cloud
+      Topic: /stereo_rect/stereo_recon/cloud
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
@@ -106,7 +106,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/Image
       Enabled: true
-      Image Topic: /mynteye/stereo_recon/depth/image
+      Image Topic: /stereo_rect/stereo_recon/depth/image
       Max Value: 1
       Median window: 5
       Min Value: 0

@@ -17,6 +17,8 @@
 
 #include <pcl/pcl_base.h>
 #include <pcl/point_types.h>
+// #include <pcl/filters/voxel_grid.h>
+// #include <pcl/registration/icp.h>
 
 #include <pcl_conversions/pcl_conversions.h>
 
@@ -33,7 +35,6 @@ namespace stereo_reconstruct {
                 is_use_colormap_(false),
                 frame_id_depth_("stereo_depth_optical_frame"),
                 frame_id_cloud_("stereo_cloud_optical_frame"),
-                pcl_cloud_(new pcl::PointCloud<pcl::PointXYZRGB>),
                 depth_frame_(nullptr) {}
 
         virtual ~StereoReconstruct() {
@@ -136,7 +137,8 @@ namespace stereo_reconstruct {
                     depth_frame_ = new cv::Mat(mat_disp.size(), is_mm_ ? CV_16UC1 : CV_32FC1);
                 stereo_camera_.disparity_to_depth_map(mat_disp, *depth_frame_);
 
-                stereo_camera_.depth_to_pointcloud(*depth_frame_, mat_left, *pcl_cloud_);
+                PointCloudTYPE::Ptr pcl_cloud(new PointCloudTYPE);
+                stereo_camera_.depth_to_pointcloud(*depth_frame_, mat_left, *pcl_cloud);
 
                 if(is_use_colormap_)
                 {
@@ -148,7 +150,7 @@ namespace stereo_reconstruct {
 
                 publish_depth(*depth_frame_, cam_info_left, image_left->header.stamp);
 
-                publish_cloud(pcl_cloud_, image_left->header.stamp);
+                publish_cloud(pcl_cloud, image_left->header.stamp);
             }
         }
 
@@ -180,7 +182,7 @@ namespace stereo_reconstruct {
             depth_pub_.publish(depth_msg, depth_info, time_stamp);
         }
 
-        void publish_cloud(pcl::PointCloud<pcl::PointXYZRGB>::Ptr &pcl_cloud, ros::Time time_stamp) {
+        void publish_cloud(PointCloudTYPE::Ptr &pcl_cloud, ros::Time time_stamp) {
 
             sensor_msgs::PointCloud2 ros_cloud;
             pcl::toROSMsg(*pcl_cloud, ros_cloud);
@@ -194,7 +196,6 @@ namespace stereo_reconstruct {
         bool is_mm_;
         bool is_use_colormap_;
 
-        pcl::PointCloud<pcl::PointXYZRGB>::Ptr pcl_cloud_;
         cv::Mat *depth_frame_;
 
         ros::Publisher cloud_pub_;
