@@ -7,7 +7,7 @@
     <arg name="optical_rotate" value="0 0 0 -$(arg pi/2) 0 -$(arg pi/2)" />
 
     <node pkg="tf" type="static_transform_publisher" name="$(arg camera)_base_depth"
-          args="0 -0.06 0 0 0 0 mynteye_link $(arg camera)_depth_frame 100" />
+          args="0 -0.06 0 0 0 0 $(arg camera)_link $(arg camera)_depth_frame 100" />
 
     <node pkg="tf" type="static_transform_publisher" name="$(arg camera)_depth_optical"
           args="$(arg optical_rotate) $(arg camera)_depth_frame $(arg camera)_depth_optical_frame  100" />
