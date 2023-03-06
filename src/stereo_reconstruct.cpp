@@ -48,6 +48,7 @@ class StereoNode : public nodelet::Nodelet {
     pnh.param("approx_sync", approx_sync, approx_sync);
     pnh.param("is_mm", is_mm_, is_mm_);
     pnh.param("is_use_colormap", is_use_colormap_, is_use_colormap_);
+    pnh.param("is_rectified", is_rectified_, is_rectified_);
     pnh.param("frame_id_cloud", frame_id_cloud_, frame_id_cloud_);
     pnh.param("frame_id_depth", frame_id_depth_, frame_id_depth_);
 
@@ -81,6 +82,127 @@ class StereoNode : public nodelet::Nodelet {
 
     image_transport::ImageTransport depth_it(nh);
     depth_pub_ = depth_it.advertiseCamera("depth", 1, false);
+
+    if (!is_rectified_) {
+      std::string param_file = "rs_t265.yaml";
+      pnh.param("param_file", param_file, param_file);
+      std::cout << "param_file: " << param_file << std::endl;
+      get_rect_map(param_file);
+    }
+  }
+
+  void get_rect_map(const std::string &param_file) {
+    cv::Mat R;
+    cv::Vec3d t;
+    cv::Size img_size, new_size;
+    int vfov_now = 60;
+
+    cv::FileStorage fs(param_file, cv::FileStorage::READ);
+    if (!fs.isOpened()) {
+      std::cerr << "Failed to open calibration parameter file." << std::endl;
+      exit(1);
+    }
+    fs["K1"] >> K1_;
+    fs["K2"] >> K2_;
+    fs["D1"] >> D1_;
+    fs["D2"] >> D2_;
+    fs["xi1"] >> xi1_;
+    fs["xi2"] >> xi2_;
+    fs["R"] >> R;
+    fs["T"] >> t;
+    fs["img_w"] >> img_size.width;
+    fs["img_h"] >> img_size.height;
+    fs["new_w"] >> new_size.width;
+    fs["new_h"] >> new_size.height;
+    fs["fov_v"] >> vfov_now;
+    fs.release();
+
+#if 0
+    cv::Mat Q;
+    cv::fisheye::initUndistortRectifyMap(K1_, D1_, R1_, P1_, new_size, CV_16SC2, rect_map_[0][0], rect_map_[0][1]);
+    cv::fisheye::initUndistortRectifyMap(K2_, D2_, R2_, P2_, new_size, CV_16SC2, rect_map_[1][0], rect_map_[1][1]);
+    cv::fisheye::stereoRectify(
+        K1_, D1_, K2_, D2_, img_size, R, t, R1_, R2_, P1_, P2_, Q, CV_CALIB_ZERO_DISPARITY, new_size, 0.0, 1.1);
+#else
+    double vfov_rad = vfov_now * CV_PI / 180.;
+    double focal = new_size.height / 2. / tan(vfov_rad / 2.);
+    P1_ = (cv::Mat_<double>(3, 3) << focal,
+           0.,
+           new_size.width / 2. - 0.5,
+           0.,
+           focal,
+           new_size.height / 2. - 0.5,
+           0.,
+           0.,
+           1.);
+    P2_ = P1_.clone();
+    R1_ = (cv::Mat_<double>(3, 3) << 1., 0., 0., 0., 1., 0., 0., 0., 1.);
+    R2_ = R;
+    InitUndistortRectifyMap(K1_, D1_, xi1_, R1_, P1_, new_size, rect_map_[0][0], rect_map_[0][1]);
+    InitUndistortRectifyMap(K2_, D2_, xi2_, R2_, P2_, new_size, rect_map_[1][0], rect_map_[1][1]);
+#endif
+
+    std::cout << std::endl;
+    std::cout << "K1_:\n" << K1_ << std::endl << std::endl;
+    std::cout << "K2_:\n" << K2_ << std::endl << std::endl;
+    std::cout << "D1_:\n" << D1_ << std::endl << std::endl;
+    std::cout << "D2_:\n" << D2_ << std::endl << std::endl;
+    std::cout << "R1_:\n" << R1_ << std::endl << std::endl;
+    std::cout << "R2_:\n" << R2_ << std::endl << std::endl;
+    std::cout << "P1_:\n" << P1_ << std::endl << std::endl;
+    std::cout << "P2_:\n" << P2_ << std::endl << std::endl;
+  }
+
+  inline double MatRowMul(cv::Mat m, double x, double y, double z, int r) {
+    return m.at<double>(r, 0) * x + m.at<double>(r, 1) * y + m.at<double>(r, 2) * z;
+  }
+
+  void InitUndistortRectifyMap(
+      cv::Mat K, cv::Mat D, cv::Mat xi, cv::Mat R, cv::Mat P, cv::Size size, cv::Mat &map1, cv::Mat &map2) {
+    map1 = cv::Mat(size, CV_32F);
+    map2 = cv::Mat(size, CV_32F);
+
+    double fx = K.at<double>(0, 0);
+    double fy = K.at<double>(1, 1);
+    double cx = K.at<double>(0, 2);
+    double cy = K.at<double>(1, 2);
+    double s = K.at<double>(0, 1);
+
+    double xid = xi.at<double>(0, 0);
+
+    double k1 = D.at<double>(0, 0);
+    double k2 = D.at<double>(0, 1);
+    double p1 = D.at<double>(0, 2);
+    double p2 = D.at<double>(0, 3);
+
+    cv::Mat KRi = (P * R).inv();
+
+    for (int r = 0; r < size.height; ++r) {
+      for (int c = 0; c < size.width; ++c) {
+        double xc = MatRowMul(KRi, c, r, 1., 0);
+        double yc = MatRowMul(KRi, c, r, 1., 1);
+        double zc = MatRowMul(KRi, c, r, 1., 2);
+
+        double rr = sqrt(xc * xc + yc * yc + zc * zc);
+        double xs = xc / rr;
+        double ys = yc / rr;
+        double zs = zc / rr;
+
+        double xu = xs / (zs + xid);
+        double yu = ys / (zs + xid);
+
+        double r2 = xu * xu + yu * yu;
+        double r4 = r2 * r2;
+        double xd = (1 + k1 * r2 + k2 * r4) * xu + 2 * p1 * xu * yu + p2 * (r2 + 2 * xu * xu);
+        double yd = (1 + k1 * r2 + k2 * r4) * yu + 2 * p2 * xu * yu + p1 * (r2 + 2 * yu * yu);
+
+        double u = fx * xd + s * yd + cx;
+        double v = fy * yd + cy;
+
+        map1.at<float>(r, c) = (float)u;
+        map2.at<float>(r, c) = (float)v;
+      }
+    }
   }
 
   void stereo_callback(const sensor_msgs::ImageConstPtr &image_left,
@@ -105,34 +227,47 @@ class StereoNode : public nodelet::Nodelet {
     const cv::Mat &mat_left = ptrLeftImage->image;
     const cv::Mat &mat_right = ptrRightImage->image;
 
-    std::cout << "================================== " << __LINE__ << std::endl;
-
+    cv::Mat img_r_l, img_r_r;
     image_geometry::StereoCameraModel stereo_camera_model;
     stereo_camera_model.fromCameraInfo(*cam_info_left, *cam_info_right);
 
-    stereo_camera_.camera_model_.baseline = stereo_camera_model.baseline();
-    stereo_camera_.camera_model_.left.cx = stereo_camera_model.left().cx();
-    stereo_camera_.camera_model_.left.cy = stereo_camera_model.left().cy();
-    stereo_camera_.camera_model_.left.fx = stereo_camera_model.left().fx();
-    stereo_camera_.camera_model_.right.cx = stereo_camera_model.right().cx();
-    stereo_camera_.camera_model_.right.fx = stereo_camera_model.right().fx();
+    if (is_rectified_) {
+      stereo_camera_.camera_model_.baseline = stereo_camera_model.baseline();
+      stereo_camera_.camera_model_.left.cx = stereo_camera_model.left().cx();
+      stereo_camera_.camera_model_.left.cy = stereo_camera_model.left().cy();
+      stereo_camera_.camera_model_.left.fx = stereo_camera_model.left().fx();
+      stereo_camera_.camera_model_.right.cx = stereo_camera_model.right().cx();
+      stereo_camera_.camera_model_.right.fx = stereo_camera_model.right().fx();
+
+      img_r_l = mat_left.clone();
+      img_r_r = mat_right.clone();
+    } else {
+      cv::remap(mat_left, img_r_l, rect_map_[0][0], rect_map_[0][1], cv::INTER_CUBIC);
+      cv::remap(mat_right, img_r_r, rect_map_[1][0], rect_map_[1][1], cv::INTER_CUBIC);
+
+      stereo_camera_.camera_model_.baseline = stereo_camera_model.baseline();
+      stereo_camera_.camera_model_.left.cx = P1_.at<double>(0, 2);
+      stereo_camera_.camera_model_.left.cy = P1_.at<double>(1, 2);
+      stereo_camera_.camera_model_.left.fx = P1_.at<double>(0, 0);
+      stereo_camera_.camera_model_.right.cx = stereo_camera_.camera_model_.left.cx;
+
+      cv::Mat img_concat;
+      cv::hconcat(img_r_l, img_r_r, img_concat);
+      // cv::hconcat(mat_left, mat_right, img_concat);
+      cv::imshow("rect", img_concat);
+      cv::waitKey(30);
+    }
 
     std::cout << "================================== " << __LINE__ << std::endl;
 
     cv::Mat mat_disp;
-    stereo_camera_.compute_disparity_map(mat_left, mat_right, mat_disp);
-
-    std::cout << "================================== " << __LINE__ << std::endl;
+    stereo_camera_.compute_disparity_map(img_r_l, img_r_r, mat_disp);
 
     if (depth_frame_ == nullptr) depth_frame_ = new cv::Mat(mat_disp.size(), is_mm_ ? CV_16UC1 : CV_32FC1);
     stereo_camera_.disparity_to_depth_map(mat_disp, *depth_frame_);
 
-    std::cout << "================================== " << __LINE__ << std::endl;
-
     PointCloudTYPE::Ptr pcl_cloud(new PointCloudTYPE);
-    stereo_camera_.depth_to_pointcloud(*depth_frame_, mat_left, *pcl_cloud);
-
-    std::cout << "================================== " << __LINE__ << std::endl;
+    stereo_camera_.depth_to_pointcloud(*depth_frame_, img_r_l, *pcl_cloud);
 
     if (is_use_colormap_) {
       cv::Mat colormap;
@@ -141,10 +276,7 @@ class StereoNode : public nodelet::Nodelet {
       cv::waitKey(3);
     }
 
-    std::cout << "================================== " << __LINE__ << std::endl;
-
     publish_depth(*depth_frame_, cam_info_left, image_left->header.stamp);
-
     publish_cloud(pcl_cloud, image_left->header.stamp);
   }
 
@@ -209,6 +341,17 @@ class StereoNode : public nodelet::Nodelet {
   std::string frame_id_depth_;
 
   cg::StereoCamera stereo_camera_;
+
+  bool is_rectified_ = false;
+
+  // stereo rectify
+  cv::Mat rect_map_[2][2];
+  cv::Mat K1_;
+  cv::Mat K2_;
+  cv::Mat D1_;
+  cv::Mat D2_;
+  cv::Mat xi1_, xi2_;
+  cv::Mat R1_, R2_, P1_, P2_;
 };
 
 PLUGINLIB_EXPORT_CLASS(stereo_reconstruct::StereoNode, nodelet::Nodelet);

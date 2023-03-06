@@ -5,29 +5,59 @@
     <arg name="rviz"      default="false"/>
     <arg name="mm"        default="false"/>
     <arg name="colormap"  default="false"/>
-    <arg name="left"      default="infra1" />
-    <arg name="right"     default="infra2"/>
+    <arg name="rect"      default="false"/>
     <arg name="scan"      default="false"/>
 
     <node pkg="nodelet" type="nodelet" name="nodelet_manager_stereo_recon"  args="manager" output="screen"/>
+    
+    <group if="$(arg rect)">
+        <arg name="left"      default="infra1" />
+        <arg name="right"     default="infra2"/>
+        <node pkg="nodelet" type="nodelet" name="stereo_reconstruct_node"
+              args="load stereo_reconstruct/stereo_node nodelet_manager_stereo_recon" respawn="false" output="screen">
 
-    <node pkg="nodelet" type="nodelet" name="stereo_reconstruct_node"
-          args="load stereo_reconstruct/stereo_node nodelet_manager_stereo_recon" respawn="false" output="screen">
+            <remap from="left/image"        to="$(arg camera)/$(arg left)/image_rect_raw"/>
+            <remap from="left/camera_info"  to="$(arg camera)/$(arg left)/camera_info"/>
+            <remap from="right/image"       to="$(arg camera)/$(arg right)/image_rect_raw"/>
+            <remap from="right/camera_info" to="$(arg camera)/$(arg right)/camera_info"/>
 
-        <remap from="left/image"        to="$(arg camera)/$(arg left)/image_rect_raw"/>
-        <remap from="left/camera_info"  to="$(arg camera)/$(arg left)/camera_info"/>
-        <remap from="right/image"       to="$(arg camera)/$(arg right)/image_rect_raw"/>
-        <remap from="right/camera_info" to="$(arg camera)/$(arg right)/camera_info"/>
+            <remap from="cloud"             to="$(arg camera)/stereo_recon/cloud" />
+            <remap from="depth"             to="$(arg camera)/stereo_recon/depth/image" />
 
-        <remap from="cloud"             to="$(arg camera)/stereo_recon/cloud" />
-        <remap from="depth"             to="$(arg camera)/stereo_recon/depth/image" />
+            <param name="frame_id_depth"    value="$(arg camera)_depth_optical_frame"/>
+            <param name="frame_id_cloud"    value="$(arg camera)_cloud_optical_frame"/>
 
-        <param name="frame_id_depth"    value="$(arg camera)_depth_optical_frame"/>
-        <param name="frame_id_cloud"    value="$(arg camera)_cloud_optical_frame"/>
+            <param name="is_mm"             type="bool"   value="$(arg mm)"/>
+            <param name="is_use_colormap"   type="bool"   value="$(arg colormap)"/>
+            
+            <param name="is_rectified"      type="bool"   value="$(arg rect)"/>
+        </node>
+    </group>
 
-        <param name="is_mm"             type="bool"   value="$(arg mm)"/>
-        <param name="is_use_colormap"   type="bool"   value="$(arg colormap)"/>
-    </node>
+    <group unless="$(arg rect)">
+        <arg name="left"      default="fisheye1" />
+        <arg name="right"     default="fisheye2"/>
+        <node pkg="nodelet" type="nodelet" name="stereo_reconstruct_node"
+              args="load stereo_reconstruct/stereo_node nodelet_manager_stereo_recon" respawn="false" output="screen">
+
+            <remap from="left/image"        to="$(arg camera)/$(arg left)/image_raw"/>
+            <remap from="left/camera_info"  to="$(arg camera)/$(arg left)/camera_info"/>
+            <remap from="right/image"       to="$(arg camera)/$(arg right)/image_raw"/>
+            <remap from="right/camera_info" to="$(arg camera)/$(arg right)/camera_info"/>
+
+            <remap from="cloud"             to="$(arg camera)/stereo_recon/cloud" />
+            <remap from="depth"             to="$(arg camera)/stereo_recon/depth/image" />
+
+            <param name="frame_id_depth"    value="$(arg camera)_depth_optical_frame"/>
+            <param name="frame_id_cloud"    value="$(arg camera)_cloud_optical_frame"/>
+
+            <param name="is_mm"             type="bool"   value="$(arg mm)"/>
+            <param name="is_use_colormap"   type="bool"   value="$(arg colormap)"/>
+
+            <param name="is_rectified"      type="bool"   value="$(arg rect)"/>
+            <param name="param_file"        value="$(find stereo_reconstruct)/config/rs_t265_mei.yaml"/>
+        </node>
+    </group>
 
     <group if="$(arg rviz)">
         <arg name="rviz_cfg" default="$(find stereo_reconstruct)/launch/config/stereo_reconstruct.rviz" />
