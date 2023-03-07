@@ -119,10 +119,10 @@ class StereoNode : public nodelet::Nodelet {
 
 #if 0
     cv::Mat Q;
-    cv::fisheye::initUndistortRectifyMap(K1_, D1_, R1_, P1_, new_size, CV_16SC2, rect_map_[0][0], rect_map_[0][1]);
-    cv::fisheye::initUndistortRectifyMap(K2_, D2_, R2_, P2_, new_size, CV_16SC2, rect_map_[1][0], rect_map_[1][1]);
     cv::fisheye::stereoRectify(
         K1_, D1_, K2_, D2_, img_size, R, t, R1_, R2_, P1_, P2_, Q, CV_CALIB_ZERO_DISPARITY, new_size, 0.0, 1.1);
+    cv::fisheye::initUndistortRectifyMap(K1_, D1_, R1_, P1_, new_size, CV_16SC2, rect_map_[0][0], rect_map_[0][1]);
+    cv::fisheye::initUndistortRectifyMap(K2_, D2_, R2_, P2_, new_size, CV_16SC2, rect_map_[1][0], rect_map_[1][1]);
 #else
     double vfov_rad = vfov_now * CV_PI / 180.;
     double focal = new_size.height / 2. / tan(vfov_rad / 2.);
@@ -254,6 +254,9 @@ class StereoNode : public nodelet::Nodelet {
       cv::Mat img_concat;
       cv::hconcat(img_r_l, img_r_r, img_concat);
       // cv::hconcat(mat_left, mat_right, img_concat);
+      cv::cvtColor(img_concat, img_concat, cv::COLOR_GRAY2BGR);
+      for (int i = 0; i < img_concat.rows; i += 32)
+        cv::line(img_concat, cv::Point(0, i), cv::Point(img_concat.cols, i), cv::Scalar(0, 255, 0), 1, 8);
       cv::imshow("rect", img_concat);
       cv::waitKey(30);
     }
@@ -261,7 +264,7 @@ class StereoNode : public nodelet::Nodelet {
     std::cout << "================================== " << __LINE__ << std::endl;
 
     cv::Mat mat_disp;
-    stereo_camera_.compute_disparity_map(img_r_l, img_r_r, mat_disp);
+    stereo_camera_.compute_disparity_map(img_r_l, img_r_r, mat_disp, 1);
 
     if (depth_frame_ == nullptr) depth_frame_ = new cv::Mat(mat_disp.size(), is_mm_ ? CV_16UC1 : CV_32FC1);
     stereo_camera_.disparity_to_depth_map(mat_disp, *depth_frame_);
