@@ -8,14 +8,11 @@
 #include <nodelet/nodelet.h>
 #include <pcl/pcl_base.h>
 #include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
 #include <pluginlib/class_list_macros.h>
 #include <ros/ros.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/image_encodings.h>
-// #include <pcl/filters/voxel_grid.h>
-// #include <pcl/registration/icp.h>
-
-#include <pcl_conversions/pcl_conversions.h>
 
 #include "stereo_camera.h"
 
@@ -138,8 +135,8 @@ class StereoNode : public nodelet::Nodelet {
     P2_ = P1_.clone();
     R1_ = (cv::Mat_<double>(3, 3) << 1., 0., 0., 0., 1., 0., 0., 0., 1.);
     R2_ = R;
-    InitUndistortRectifyMap(K1_, D1_, xi1_, R1_, P1_, new_size, rect_map_[0][0], rect_map_[0][1]);
-    InitUndistortRectifyMap(K2_, D2_, xi2_, R2_, P2_, new_size, rect_map_[1][0], rect_map_[1][1]);
+    init_undistort_rectify_map(K1_, D1_, xi1_, R1_, P1_, new_size, rect_map_[0][0], rect_map_[0][1]);
+    init_undistort_rectify_map(K2_, D2_, xi2_, R2_, P2_, new_size, rect_map_[1][0], rect_map_[1][1]);
 #endif
 
     std::cout << std::endl;
@@ -153,11 +150,11 @@ class StereoNode : public nodelet::Nodelet {
     std::cout << "P2_:\n" << P2_ << std::endl << std::endl;
   }
 
-  inline double MatRowMul(cv::Mat m, double x, double y, double z, int r) {
+  inline double mat_row_mul(cv::Mat m, double x, double y, double z, int r) {
     return m.at<double>(r, 0) * x + m.at<double>(r, 1) * y + m.at<double>(r, 2) * z;
   }
 
-  void InitUndistortRectifyMap(
+  void init_undistort_rectify_map(
       cv::Mat K, cv::Mat D, cv::Mat xi, cv::Mat R, cv::Mat P, cv::Size size, cv::Mat &map1, cv::Mat &map2) {
     map1 = cv::Mat(size, CV_32F);
     map2 = cv::Mat(size, CV_32F);
@@ -179,9 +176,9 @@ class StereoNode : public nodelet::Nodelet {
 
     for (int r = 0; r < size.height; ++r) {
       for (int c = 0; c < size.width; ++c) {
-        double xc = MatRowMul(KRi, c, r, 1., 0);
-        double yc = MatRowMul(KRi, c, r, 1., 1);
-        double zc = MatRowMul(KRi, c, r, 1., 2);
+        double xc = mat_row_mul(KRi, c, r, 1., 0);
+        double yc = mat_row_mul(KRi, c, r, 1., 1);
+        double zc = mat_row_mul(KRi, c, r, 1., 2);
 
         double rr = sqrt(xc * xc + yc * yc + zc * zc);
         double xs = xc / rr;
