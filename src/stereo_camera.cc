@@ -67,7 +67,7 @@ void StereoCamera::compute_disparity_map(const cv::Mat &mat_l, const cv::Mat &ma
       sgbm->setSpeckleRange(32);
       sgbm->setDisp12MaxDiff(1);
 
-      int alg = STEREO_SGBM;
+      int alg = STEREO_HH;
       if (alg == STEREO_HH)
         sgbm->setMode(cv::StereoSGBM::MODE_HH);
       else if (alg == STEREO_SGBM)

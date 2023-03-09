@@ -2,9 +2,9 @@
 ---
 img_w: 848
 img_h: 800
-new_w: 600
-new_h: 400
-fov_v: 60
+new_w: 400
+new_h: 300
+fov_v: 80
 K1: !!opencv-matrix
    rows: 3
    cols: 3
