@@ -14,7 +14,13 @@
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/image_encodings.h>
 
+#include <Eigen/Core>
+#include <opencv2/core/eigen.hpp>
+#include <opencv2/features2d/features2d.hpp>
+
 #include "stereo_camera.h"
+
+#define WITH_DRAW 1
 
 namespace stereo_reconstruct {
 
@@ -135,9 +141,52 @@ class StereoNode : public nodelet::Nodelet {
     P2_ = P1_.clone();
     R1_ = (cv::Mat_<double>(3, 3) << 1., 0., 0., 0., 1., 0., 0., 0., 1.);
     R2_ = R;
+    {
+      Eigen::Vector3d t1 = Eigen::Vector3d::Zero();
+      Eigen::Matrix3d R1 = Eigen::Matrix3d::Identity();
+      // Eigen::Map<Eigen::Matrix3d, Eigen::RowMajor> R2(reinterpret_cast<double*>(R.data));
+      Eigen::Vector3d t2;
+      Eigen::Matrix3d R2;
+      cv::cv2eigen(t, t2);
+      cv::cv2eigen(R, R2);
+
+      // twist inputs to align on x axis
+      Eigen::Vector3d x = t1 - t2;
+      Eigen::Vector3d y = R1.col(2).cross(x);
+      Eigen::Vector3d z = x.cross(y);
+
+      Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
+      T.topLeftCorner<3, 3>() << x.normalized(), y.normalized(), z.normalized();
+
+      // took wrong camera as left (redo other way round)
+      if (T(0, 0) < 0) {
+        x = t2 - t1;
+        y = R2.col(2).cross(x);
+        z = x.cross(y);
+        T.topLeftCorner<3, 3>() << x.normalized(), y.normalized(), z.normalized();
+      }
+
+      Eigen::Matrix3d Rinv1 = T.topLeftCorner<3, 3>().transpose() * R1;
+      Eigen::Matrix3d Rinv2 = T.topLeftCorner<3, 3>().transpose() * R2;
+      cv::eigen2cv(Rinv1, R1_);
+      cv::eigen2cv(Rinv2, R2_);
+    }
+
+    cv::Mat Q;
+    cv::Mat K1 = P1_.clone();
+    cv::Mat K2 = P2_.clone();
+    cv::Mat P1, P2;
+    cv::Mat D1 = cv::Mat::zeros(4, 1, CV_32FC1);
+    cv::Mat D2 = cv::Mat::zeros(4, 1, CV_32FC1);
+    cv::stereoRectify(K1_, D1, K2_, D2, new_size, R, t, R1_, R2_, P1, P2, Q, CV_CALIB_ZERO_DISPARITY);
+
     init_undistort_rectify_map(K1_, D1_, xi1_, R1_, P1_, new_size, rect_map_[0][0], rect_map_[0][1]);
     init_undistort_rectify_map(K2_, D2_, xi2_, R2_, P2_, new_size, rect_map_[1][0], rect_map_[1][1]);
 #endif
+
+    // std::vector<cv::Vec<T2, 3>> epilines1, epilines2;
+    // cv::computeCorrespondEpilines(points1, 1, F, epilines1);  // Index starts with 1
+    // cv::computeCorrespondEpilines(points2, 2, F, epilines2);
 
     std::cout << std::endl;
     std::cout << "K1_:\n" << K1_ << std::endl << std::endl;
@@ -247,21 +296,29 @@ class StereoNode : public nodelet::Nodelet {
       stereo_camera_.camera_model_.left.cy = P1_.at<double>(1, 2);
       stereo_camera_.camera_model_.left.fx = P1_.at<double>(0, 0);
       stereo_camera_.camera_model_.right.cx = stereo_camera_.camera_model_.left.cx;
+    }
 
+#if WITH_DRAW
+    if (1) {
       cv::Mat img_concat;
       cv::hconcat(img_r_l, img_r_r, img_concat);
-      // cv::hconcat(mat_left, mat_right, img_concat);
       cv::cvtColor(img_concat, img_concat, cv::COLOR_GRAY2BGR);
       for (int i = 0; i < img_concat.rows; i += 32)
         cv::line(img_concat, cv::Point(0, i), cv::Point(img_concat.cols, i), cv::Scalar(0, 255, 0), 1, 8);
       cv::imshow("rect", img_concat);
-      cv::waitKey(30);
+    } else {
+      detect_match(img_r_l, img_r_r);
     }
+    cv::waitKey(30);
+#endif
 
     std::cout << "================================== " << __LINE__ << std::endl;
 
     cv::Mat mat_disp;
     stereo_camera_.compute_disparity_map(img_r_l, img_r_r, mat_disp, 1);
+
+    // filter
+    cv::medianBlur(mat_disp, mat_disp, 5);
 
     if (depth_frame_ == nullptr) depth_frame_ = new cv::Mat(mat_disp.size(), is_mm_ ? CV_16UC1 : CV_32FC1);
     stereo_camera_.disparity_to_depth_map(mat_disp, *depth_frame_);
@@ -278,6 +335,72 @@ class StereoNode : public nodelet::Nodelet {
 
     publish_depth(*depth_frame_, cam_info_left, image_left->header.stamp);
     publish_cloud(pcl_cloud, image_left->header.stamp);
+  }
+
+  inline void detect_match(const cv::Mat &img_1, const cv::Mat &img_2) {
+    if (!img_1.data || !img_2.data) {
+      std::cout << " --(!) Error reading images " << std::endl;
+      return;
+    }
+
+    cv::Ptr<cv::ORB> detector = cv::ORB::create(400);
+
+    std::vector<cv::KeyPoint> keypoints_1, keypoints_2;
+    cv::Mat descriptors_1, descriptors_2;
+    detector->detectAndCompute(img_1, cv::Mat(), keypoints_1, descriptors_1);
+    detector->detectAndCompute(img_2, cv::Mat(), keypoints_2, descriptors_2);
+
+    cv::FlannBasedMatcher matcher(new cv::flann::LshIndexParams(20, 10, 2));
+    std::vector<cv::DMatch> matches;
+    matcher.match(descriptors_1, descriptors_2, matches);
+
+    //-- Quick calculation of max and min distances between keypoints
+    double max_dist = 0;
+    double min_dist = 50;
+    for (int i = 0; i < descriptors_1.rows; i++) {
+      double dist = matches[i].distance;
+      if (dist < min_dist) min_dist = dist;
+      if (dist > max_dist) max_dist = dist;
+    }
+    printf("-- Max dist : %f \n", max_dist);
+    printf("-- Min dist : %f \n", min_dist);
+
+    //-- Draw only "good" matches (i.e. whose distance is less than 2*min_dist,
+    //-- or a small arbitary value ( 0.02 ) in the event that min_dist is very
+    //-- small)
+    //-- PS.- radiusMatch can also be used here.
+    std::vector<cv::DMatch> good_matches;
+    for (int i = 0; i < descriptors_1.rows; i++) {
+      if (matches[i].distance <= std::max(2 * min_dist, 0.02)) good_matches.push_back(matches[i]);
+    }
+
+    //-- Draw only "good" matches
+    cv::Mat img_matches;
+    cv::drawMatches(img_1,
+                    keypoints_1,
+                    img_2,
+                    keypoints_2,
+                    good_matches,
+                    img_matches,
+                    cv::Scalar::all(-1),
+                    cv::Scalar::all(-1),
+                    std::vector<char>(),
+                    cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
+
+    cv::imshow("FLANN Good Matches", img_matches);
+    double mean_error = 0.0;
+    for (int i = 0; i < (int)good_matches.size(); i++) {
+      int idx1 = good_matches[i].queryIdx;
+      int idx2 = good_matches[i].trainIdx;
+      cv::Point2f pt1 = keypoints_1[idx1].pt;
+      cv::Point2f pt2 = keypoints_2[idx2].pt;
+      std::cout << "\"-- Good Match [" << std::setw(2) << i << "] Keypoint 1: " << std::setw(4) << idx1
+                << "  -- Keypoint 2: " << std::setw(4) << idx2 << " --> " << pt1 << " <--> " << pt2 << std::endl;
+      mean_error += std::abs(pt1.y - pt2.y);
+    }
+    mean_error /= good_matches.size();
+
+    std::cout << "-- Mean Error (y): " << mean_error << std::endl;
   }
 
   void publish_depth(cv::Mat &depth, const sensor_msgs::CameraInfoConstPtr &cam_info, ros::Time time_stamp) {
